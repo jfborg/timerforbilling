@@ -1,3 +1,4 @@
+import { Link } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, Text, View } from 'react-native';
 
@@ -11,10 +12,13 @@ export default function HomeScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>{BRAND.displayName}</Text>
-      <Text style={styles.subtitle}>Phase 0 scaffold is running.</Text>
+      <Text style={styles.subtitle}>Phase 1: locked letter backend is running.</Text>
       <Text onPress={ping} style={styles.ping}>
         Zustand ping count: {pingCount} (tap to increment)
       </Text>
+      <Link href="/debug" style={styles.link}>
+        Open debug screen
+      </Link>
       <StatusBar style="auto" />
     </View>
   );
@@ -40,5 +44,10 @@ const styles = StyleSheet.create({
     marginTop: 24,
     fontSize: 14,
     color: '#7A5B2E',
+  },
+  link: {
+    marginTop: 12,
+    fontSize: 14,
+    textDecorationLine: 'underline',
   },
 });

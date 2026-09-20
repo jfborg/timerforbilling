@@ -3,6 +3,65 @@
 Log of choices made when two reasonable approaches existed, per the standing rule to pick the
 simpler one and note the alternative here.
 
+## Phase 1
+
+**Privileged logic lives in security-definer SQL functions, not in the Edge Functions
+themselves.** seal_letter/claim_letter/open_letter/burn_letter (supabase/migrations) are
+Postgres functions granted execute only to `service_role`; anon and authenticated get no grant
+at all, so a client still can never call them directly, only through the matching Edge
+Function. The Edge Functions (supabase/functions/{seal,claim,open,burn}) are thin: verify the
+caller's JWT, validate the request shape, call the RPC, map its error to an HTTP status. This
+keeps "Edge Functions for anything privileged" true as the client-facing contract while making
+the actual security-critical logic (the atomic first-claim-wins update, the unlock_at/identity
+check before returning content) fully testable with plain SQL, which matters because of the
+next decision.
+
+**Docker and Deno are both unavailable in this sandbox** (outbound network policy blocks
+Docker Hub image pulls and the Deno install script), so `supabase start` and
+`supabase functions serve` cannot run here, and pgTAP-in-Docker (the standard way Supabase
+recommends testing RLS) isn't an option either. PostgreSQL 16 server binaries are already
+installed locally, though (a `postgres` OS user and cluster, started with
+`service postgresql start`), so `npm run test:backend` (supabase/tests/) applies the real
+migrations to a local database with a hand-built stand-in for the `auth`/`storage` schemas
+Supabase normally provides, then runs SQL assertions against it directly. See
+supabase/tests/README.md for the full design and its two psql gotchas (temp tables across a
+`SET ROLE`, and `:variable` substitution not reaching inside `DO $$ ... $$` bodies). The Deno
+Edge Function handlers themselves are written but not executable in this sandbox; they're thin
+enough (see above) that the real risk surface is covered by the SQL tests, but the owner
+should still run `supabase functions serve` once locally before trusting the HTTP layer fully.
+
+**unlock_at bounds are enforced by a BEFORE INSERT trigger, not a table CHECK constraint.** A
+CHECK constraint re-validates on every UPDATE too, which would block the test suite's only way
+to simulate "time has passed" (moving a row's unlock_at into the past). The 1-minute/12-month
+bounds are genuinely an insert-time-only concern: nothing in the product ever legitimately
+updates unlock_at after sealing.
+
+**Burn soft-deletes.** burn_letter deletes the letter_contents row (the actual thing that
+needs to stop existing) but leaves the letters row behind with status='burned', rather than
+deleting it outright. This keeps the token and id resolving to "gone" instead of a dangling
+reference, and get_letter_preview()/open_letter() both already filter burned letters out.
+
+**A sender cannot claim their own letter.** Not stated explicitly in the brief; added as a
+product-integrity assumption (claim_letter rejects it) since a self-claimed letter doesn't fit
+the "person to person" positioning. Flagging for the owner in case sending-to-self should
+actually be allowed to flow through claim rather than being a separate mode later.
+
+**Media upload and signed-URL delivery are not built yet**, on purpose: brief section 10 puts
+media in Phase 4, and Phase 2's own send/receive flow is text-only. open_letter() already
+returns signed URLs for whatever is in letter_contents.media, and the seal_letter()/Edge
+Function signature already accepts a media array, so Phase 4 should only need to add the
+upload path, not another schema migration. The letter-media storage bucket exists (migration
+20260920060920) but has no anon/authenticated storage policies yet; nothing needs them until
+there's an upload flow to authorize.
+
+**supabase/functions is excluded from the root tsconfig and ESLint config.** Its handlers use
+Deno-only globals and `npm:` import specifiers that a Node-flavored TypeScript/ESLint setup
+can't resolve; Deno has its own type checker and linter for them, usable once Docker/Deno are
+available. The one portable, Deno-free file, `_shared/errors.ts` (HTTP status mapping), is
+explicitly re-included in both configs and covered by a normal Jest test, since duplicating it
+into a separate Node-only copy just to keep it typechecked wasn't worth carrying two sources of
+truth for ~30 lines of mapping logic.
+
 ## Phase 0
 
 **Repo repurposed from "timer for billing" to the Sealed Letters app.** The repository was

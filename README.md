@@ -9,8 +9,8 @@ pick and trade-mark-check the final name before launch.
 
 ## Status
 
-Phase 0 (scaffold) is complete. See `PHASE_0_NOTES.md` for what shipped, what was deferred,
-and what needs an owner decision before Phase 1.
+Phase 1 (locked letter backend) is complete. See `PHASE_0_NOTES.md` and `PHASE_1_NOTES.md`
+for what shipped each phase, what was deferred, and what needs an owner decision.
 
 ## Stack
 
@@ -38,25 +38,38 @@ npm run android   # requires Android Studio / an emulator
 ## Checks
 
 ```sh
-npm run typecheck   # tsc --noEmit
-npm run lint         # eslint .
-npm test             # jest, via the jest-expo preset
+npm run typecheck    # tsc --noEmit
+npm run lint          # eslint .
+npm test              # jest, via the jest-expo preset (app + portable backend unit tests)
+npm run test:backend  # RLS/RPC tests against a local Postgres; see supabase/tests/README.md
 ```
 
-All three must pass before a phase is considered done.
+All four must pass before a phase is considered done.
 
 ## Project layout
 
 ```
-app/                 expo-router routes (app/index.tsx is the home screen)
-constants/brand.json  the BRAND constants (codename, display name, slug, scheme)
-store/                Zustand stores
-supabase/             Supabase CLI config, SQL migrations, Edge Functions
-assets/               app icons and, later, stationery, seals, sounds
-assets/licenses/       licence files for every non-original asset
+app/                    expo-router routes (app/index.tsx is the home screen, app/debug.tsx
+                         exercises the seal/claim/open/burn Edge Functions directly)
+lib/supabase.ts          Supabase client, reads EXPO_PUBLIC_SUPABASE_URL/ANON_KEY
+constants/brand.json     the BRAND constants (codename, display name, slug, scheme)
+store/                   Zustand stores
+supabase/migrations/     SQL schema, RLS policies, and the seal/claim/open/burn functions
+supabase/functions/      Deno Edge Functions (thin wrappers around the SQL functions)
+supabase/tests/          RLS/RPC test harness; see supabase/tests/README.md
+assets/                  app icons and, later, stationery, seals, sounds
+assets/licenses/          licence files for every non-original asset
 ```
 
 ## Environment variables
 
-None yet. Phase 1 adds a Supabase project URL and anon key via `.env` (see `.gitignore`;
-never commit `.env`) and EAS secrets for anything used in CI or store builds.
+Copy `.env.example` to `.env` (gitignored, never commit it) once a Supabase project exists
+(`supabase/README.md`):
+
+```
+EXPO_PUBLIC_SUPABASE_URL=
+EXPO_PUBLIC_SUPABASE_ANON_KEY=
+```
+
+The debug screen (`/debug`) works without these set; it just shows a "not configured" message
+instead of calling out to a project. EAS secrets cover anything needed for CI or store builds.
