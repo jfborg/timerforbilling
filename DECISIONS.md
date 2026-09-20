@@ -3,6 +3,53 @@
 Log of choices made when two reasonable approaches existed, per the standing rule to pick the
 simpler one and note the alternative here.
 
+## Phase 3
+
+**The static web landing page from Phase 2 was replaced with a server-rendered one.** A pure
+client-side SPA cannot produce correct per-letter Open Graph tags, because link-unfurling
+crawlers (iMessage, WhatsApp, Slack, Twitter, ...) read the initial HTML only and never run
+JavaScript; every letter's page would have unfurled with the same generic preview regardless
+of who sent it or when it opens. Since the whole growth model is "every letter sent is an
+invitation," a broken preview is not a cosmetic gap. `supabase/functions/link-page` now
+renders the HTML per request, after fetching the letter's preview server-side; the actual
+markup/escaping/countdown-script logic lives in the portable, Jest-tested
+`_shared/linkPageHtml.ts` so the Deno glue around it stays thin. `web/index.html` and
+`config.example.js` were deleted rather than kept alongside as a second implementation.
+
+**The Open Graph image is SVG, not PNG.** `og-image` (paired with `link-page`) returns an SVG
+built by the portable `_shared/ogImage.ts`. iMessage, WhatsApp, Slack, and Discord all render
+SVG `og:image` correctly; a small number of platforms (some older crawlers) do not, but
+producing raster images from Deno would need a native rasterizer this runtime cannot easily
+carry, and none of it is testable here regardless (see below). Revisit if real link-preview
+testing on a live project turns up a platform that needs raster.
+
+**Notification dispatch is fetch-and-forget, not receipt-tracked.** `dispatch-notifications`
+marks a `notification_events` row sent once Expo's `/send` endpoint accepts the push, not once
+a delivery receipt confirms the device actually got it. Expo's receipt API is a second,
+delayed round trip per push ticket; wiring it up is real additional infrastructure (a second
+scheduled sweep, ticket-id tracking) that did not feel proportionate before this pipeline has
+ever run against a real project. Flagged for the owner as a reliability gap, not a correctness
+one: a failed send just never retries, it does not double-send.
+
+**Push notification scheduling (pg_cron + pg_net + Vault) is real, correct, deployable SQL
+that cannot be verified in this sandbox and is excluded from the local test harness.** Unlike
+everything else in `supabase/migrations`, this migration wires up Supabase platform features
+(a job scheduler, outbound HTTP from Postgres, an encrypted secrets store) that a plain local
+Postgres install cannot stand in for the way the `auth`/`storage` shim stands in for Supabase's
+auth and storage. `supabase/tests/run.mjs` skips this one file by name, with a comment
+explaining why; the SQL functions it calls on a schedule
+(`collect_unlock_notifications`/`dequeue_pending_notifications`/`mark_notifications_sent`) are
+fully covered on their own.
+
+**Universal links, app links, and push notifications cannot be exercised at all in this
+sandbox**: they need a physical device, a real EAS project id, and (for links) a real,
+DNS-owned, HTTPS-serving domain with the `.well-known` files actually live. Everything that
+could be built without those was: the client registration code degrades to a no-op rather than
+crashing when they are missing (checked by the same live click-through method used since
+Phase 2, not just assumed), and the `.well-known` placeholders are valid JSON that another
+tool could pick up and template once real values exist. See PHASE_3_NOTES.md for exactly what
+was and was not verified.
+
 ## Phase 2
 
 **A reply is a first-class backend concept (reply_to_letter), not a fresh seal + share.**

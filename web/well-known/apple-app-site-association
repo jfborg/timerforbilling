@@ -1,0 +1,11 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "TEAMID1234.app.sealedcodename.ios",
+        "paths": ["/l/*"]
+      }
+    ]
+  }
+}

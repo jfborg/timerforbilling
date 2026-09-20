@@ -24,6 +24,11 @@ const databaseDir = path.join(here, 'database');
 
 const DB_NAME = 'sealed_test';
 
+// Migrations that only wire up Supabase platform features unavailable locally (pg_cron,
+// pg_net, Vault) and have nothing in them the local harness could meaningfully check; see
+// each file's own header comment for why.
+const SKIP_MIGRATIONS = new Set(['20260920070202_schedule_dispatch_notifications.sql']);
+
 function runAsPostgres(args) {
   return execFileSync('su', ['postgres', '-c', `psql ${args}`], {
     encoding: 'utf8',
@@ -81,7 +86,13 @@ try {
   for (const f of sortedSqlFiles(fixturesPreDir)) runFile(f);
 
   console.log('Applying real migrations (supabase/migrations)...');
-  for (const f of sortedSqlFiles(migrationsDir)) runFile(f);
+  for (const f of sortedSqlFiles(migrationsDir)) {
+    if (SKIP_MIGRATIONS.has(path.basename(f))) {
+      console.log(`  -> ${path.relative(repoRoot, f)} (skipped, see SKIP_MIGRATIONS)`);
+      continue;
+    }
+    runFile(f);
+  }
 
   console.log('Applying grants fixture (after migrations, so tables exist)...');
   for (const f of sortedSqlFiles(fixturesPostDir)) runFile(f);

@@ -9,9 +9,9 @@ pick and trade-mark-check the final name before launch.
 
 ## Status
 
-Phase 2 (send and receive, text only) is complete. See `PHASE_0_NOTES.md`, `PHASE_1_NOTES.md`,
-and `PHASE_2_NOTES.md` for what shipped each phase, what was deferred, and what needs an owner
-decision. Visual direction A (classic stationery) is the one built; see `PHASE_2_NOTES.md`.
+Phase 3 (push and links) is complete. See `PHASE_0_NOTES.md` through `PHASE_3_NOTES.md` for
+what shipped each phase, what was deferred, and what needs an owner decision. Visual direction
+A (classic stationery) is the one built; see `PHASE_2_NOTES.md`.
 
 ## Stack
 
@@ -51,17 +51,23 @@ All four must pass before a phase is considered done.
 
 ```
 app/                     expo-router routes: index (home), compose, seal, share, sent, claim,
-                          shelf, open/[id], debug, dev/visual-directions
+                          shelf, open/[id], l/[token] (universal/app link landing), debug,
+                          dev/visual-directions
 lib/api.ts                typed calls into the seal/claim/open/burn/reply Edge Functions and
                           the direct letters reads RLS already allows
 lib/supabase.ts           Supabase client, reads EXPO_PUBLIC_SUPABASE_URL/ANON_KEY
+lib/pushNotifications.ts  Expo push registration and notification-tap handling
 constants/brand.json      the BRAND constants (codename, display name, slug, scheme)
 constants/stationery.ts   stationery catalog (one design so far: classic-cream)
 store/                    Zustand stores (auth session, compose draft)
-supabase/migrations/      SQL schema, RLS policies, and the seal/claim/open/burn/reply functions
-supabase/functions/       Deno Edge Functions (thin wrappers around the SQL functions)
+supabase/migrations/      SQL schema, RLS policies, and the seal/claim/open/burn/reply/
+                          notification functions
+supabase/functions/       Deno Edge Functions: seal/claim/open/burn/reply, dispatch-
+                          notifications, link-page + og-image (the letter landing page)
 supabase/tests/           RLS/RPC test harness; see supabase/tests/README.md
-web/                       static claim/countdown landing page; see web/README.md
+web/                       .well-known/ universal-link verification files and docs; the
+                          landing page itself is supabase/functions/link-page now, see
+                          web/README.md
 assets/                   app icons and, later, stationery, seals, sounds
 assets/licenses/           licence files for every non-original asset
 ```

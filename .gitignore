@@ -38,9 +38,6 @@ yarn-error.*
 supabase/.temp
 supabase/.branches
 
-# per-environment web config (not secret, just deploy-specific; see web/README.md)
-web/config.js
-
 # typescript
 *.tsbuildinfo
 

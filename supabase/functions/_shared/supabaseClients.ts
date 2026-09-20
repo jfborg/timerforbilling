@@ -27,6 +27,14 @@ export function createAdminClient(): SupabaseClient {
   });
 }
 
+/** No caller identity involved: for the public, unauthenticated read path
+ * (get_letter_preview), same access a browser has with the anon key. */
+export function createAnonClient(): SupabaseClient {
+  return createClient(env('SUPABASE_URL'), env('SUPABASE_ANON_KEY'), {
+    auth: { persistSession: false },
+  });
+}
+
 /** Verifies the caller's JWT and returns their user id, or null if it's missing/invalid. */
 export async function getCallerId(req: Request): Promise<string | null> {
   const authHeader = req.headers.get('Authorization');

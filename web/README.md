@@ -1,42 +1,32 @@
-# Web landing page
+# The letter link page
 
-The small static page the sealed link opens to (brief section 6, Receive step 1): sealed
-envelope, live countdown, and a claim code to type into the app if it is not yet installed.
-Plain HTML/CSS/JS, no build step, no framework: `index.html` is the whole site.
+There is no static site here anymore. Phase 2 built the letter landing page (brief section 6,
+Receive step 1) as a plain static `index.html`, reading the preview client-side after the page
+loaded. That breaks link previews: when the link is pasted into iMessage, WhatsApp, Slack, or
+any other crawler-based unfurler, the crawler fetches the URL and reads whatever is in the
+initial HTML, without ever running JavaScript, so a purely static page can never show the
+right sender name, unlock date, or preview image for a specific letter, only generic
+placeholder text. That would blunt the app's actual growth loop ("every letter sent is an
+invitation"), so Phase 3 moved the page's rendering into an Edge Function that already knows
+the letter's preview data by the time it responds.
 
-It reads the letter's public preview straight from PostgREST's RPC endpoint
-(`get_letter_preview`, granted to `anon`; see `supabase/migrations`), never anything private.
-
-No Open Graph preview image yet: that is Phase 3's Edge Function
-(`BUILD_BRIEF_SEALED.md` section 10). Store buttons are plain placeholder links for the same
-reason section 3's guardrails forbid fabricating real Apple/Google trademarked badge assets
-without rights; swap them for the real badges once there is somewhere for them to link to.
-
-## Configure
-
-Copy `config.example.js` to `config.js` (gitignored) and fill in a real project's URL and anon
-key:
-
-```sh
-cp config.example.js config.js
-```
-
-The anon key is meant to be public in client code; row level security is what actually
-protects the data, not keeping this secret.
+The page itself now lives at `supabase/functions/link-page` (server-renders the HTML,
+including correct `og:title` / `og:description` / `og:image`), paired with
+`supabase/functions/og-image` (the preview image `og:image` points to). Both are thin HTTP
+glue around portable, Jest-tested builders in `supabase/functions/_shared/linkPageHtml.ts` and
+`ogImage.ts`.
 
 ## Routing
 
-The page reads the token from the last path segment of the URL (`/l/<token>`), so the
-hosting config needs a catch-all rewrite of `/l/*` to `index.html`, the same pattern a
-single-page app uses (for example, a Netlify `_redirects` file with `/l/* /index.html 200`, or
-the equivalent on whichever static host is chosen). No specific host is picked yet; add that
-rewrite config once one is.
+Once a domain is chosen (brief section 12, question 1), point `/l/*` at
+`link-page`'s function URL (a reverse proxy / rewrite at the hosting/DNS layer, since Supabase
+Edge Functions are served from `*.functions.supabase.co`, not the app's own domain, unless a
+custom domain is configured for them). `og-image` only needs to be reachable at
+`/functions/v1/og-image/<token>`, which `link-page` already references by its full Supabase
+function URL, so it does not need a custom-domain rewrite of its own.
 
 ## Try it locally
 
-```sh
-cd web
-python3 -m http.server 8080
-# then open http://localhost:8080/index.html?  -- note: without the rewrite above, pass the
-# token by visiting /l/<token> once a real static host with the rewrite is serving this.
-```
+Cannot be run in this sandbox: Deno is unavailable (see DECISIONS.md). Once the owner has
+Docker/Deno and a linked project, `supabase functions serve` plus a `curl` against
+`/link-page/<a real token>` is the way to check it renders.
