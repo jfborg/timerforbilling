@@ -1,0 +1,7 @@
+{
+  "codename": "SEALED",
+  "displayName": "Sealed",
+  "slug": "sealed-app",
+  "scheme": "sealedapp",
+  "linkBaseUrl": "https://example-sealed-app.test/l"
+}

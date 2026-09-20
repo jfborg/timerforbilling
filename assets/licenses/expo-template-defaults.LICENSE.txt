@@ -1,0 +1,9 @@
+icon.png, splash-icon.png, favicon.png, android-icon-foreground.png,
+android-icon-background.png, android-icon-monochrome.png
+
+Source: Expo's official `create-expo-app` blank-typescript template (MIT licence,
+https://github.com/expo/expo/tree/main/templates/expo-template-blank-typescript).
+
+These are placeholder scaffold icons only, not final branding. They must be replaced with
+original artwork before Phase 2 (visual direction mocks) and Phase 9 (visual identity) ship,
+per the IP guardrails.
