@@ -17,9 +17,10 @@ const BAD_REQUEST = new Set([
   'unlock_at_too_soon',
   'unlock_at_too_far',
   'cannot_claim_own_letter',
+  'original_not_opened',
 ]);
 
-const CONFLICT = new Set(['already_claimed', 'already_opened']);
+const CONFLICT = new Set(['already_claimed', 'already_opened', 'already_replied']);
 
 export function mapDbErrorMessage(message: string): MappedError {
   if (message === 'letter_not_found') {

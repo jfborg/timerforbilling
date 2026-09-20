@@ -3,6 +3,51 @@
 Log of choices made when two reasonable approaches existed, per the standing rule to pick the
 simpler one and note the alternative here.
 
+## Phase 2
+
+**A reply is a first-class backend concept (reply_to_letter), not a fresh seal + share.**
+Monetisation (brief section 7) treats "replying to a letter you received" as always free and
+capped at one per received letter, which only makes sense if a reply is addressed
+automatically to the original sender rather than sealed with its own shareable link that
+someone has to claim. `reply_to_letter()` (new in the Phase 1 functions migration, edited in
+place since nothing has been deployed to a real project yet) auto-addresses and auto-claims
+the new letter, requires the original to already be opened by the caller, and is enforced to
+happen at most once per original both in the function and by a unique partial index
+(`letters_one_reply_per_original`), so the limit holds even if another write path onto
+`letters` is ever added.
+
+**The "short claim code" from brief section 6 is, for now, the same 128-bit token used in the
+link, just typed instead of tapped.** A genuinely short, human-typeable code would need its
+own rate limiting (it has far less entropy than the token, so an unthrottled claim endpoint
+would make it brute-forceable) and a way to map it back to the real token, which is a security
+design task in its own right, not just "make the string shorter." Shipping a weak code without
+that would undercut the same rule 4 that requires the link's token to be unguessable.
+Documented here rather than silently narrowing the brief's wording; revisit once rate limiting
+exists (naturally fits alongside Phase 5's safety work).
+
+**Only one stationery design (classic-cream, matching chosen direction A) ships this phase.**
+The brief asks for 3 free designs, but the other two are original-artwork or licensed-asset
+work (guardrail 2), not something to fabricate placeholder-quality just to hit a count.
+Flagged for the owner; `constants/stationery.ts` is structured so adding more is just adding
+entries.
+
+**The compose screen's "date and time picker" is quick-picks plus a days/hours/minutes-from-now
+custom entry, not a native calendar picker.** `@react-native-community/datetimepicker` has a
+patchy cross-platform (especially web) story and this sandbox cannot device-test it across iOS/
+Android/web to be confident in it. The current control still lets someone dial in an exact
+time; treat it as a placeholder for a real date/time picker in a later polish pass.
+
+**Web landing page is plain HTML/CSS/JS with no build step**, reading `get_letter_preview` via
+a direct PostgREST RPC call rather than through an Edge Function. The brief's "static site plus
+one Edge Function" Edge Function is the Open Graph preview image generator, which is explicit
+Phase 3 scope; nothing in Phase 2's landing page needs privileged access, so there is no Edge
+Function to write yet.
+
+**Store badges on the web landing page are plain text buttons, not the real Apple/Google
+badge graphics.** Embedding those trademarked assets without rights would breach guardrail 1
+the same way a fabricated postal-service stamp would breach guardrail 5; swap them once the
+page actually links somewhere.
+
 ## Phase 1
 
 **Privileged logic lives in security-definer SQL functions, not in the Edge Functions

@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sealed letter</title>
+<meta name="description" content="Someone sealed you a letter. It opens soon." />
+<meta name="robots" content="noindex" />
+<style>
+  :root {
+    color-scheme: light;
+    --paper: #F3E9D6;
+    --card: #FBF5E9;
+    --border: #D8C6A0;
+    --text: #3A2A1A;
+    --muted: #8A7455;
+    --accent: #8B1E1E;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--paper);
+    color: var(--text);
+    font-family: Georgia, 'Times New Roman', serif;
+    padding: 24px;
+  }
+  main {
+    width: 100%;
+    max-width: 420px;
+    text-align: center;
+  }
+  h1 {
+    font-size: 28px;
+    margin: 0 0 24px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px 20px;
+    margin-bottom: 20px;
+  }
+  .wax {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--paper);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    font-weight: bold;
+    margin: 0 auto 16px;
+  }
+  .from {
+    font-size: 15px;
+    color: var(--muted);
+    margin: 0 0 4px;
+  }
+  .countdown {
+    font-size: 30px;
+    font-weight: bold;
+    color: var(--accent);
+    letter-spacing: 1px;
+    margin: 12px 0 0;
+  }
+  .code-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    margin: 0 0 6px;
+  }
+  .code {
+    font-family: 'SF Mono', Consolas, monospace;
+    font-size: 15px;
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    word-break: break-all;
+    cursor: pointer;
+  }
+  .code.copied::after {
+    content: ' (copied)';
+    color: var(--accent);
+    font-family: Georgia, serif;
+  }
+  .stores {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 20px;
+  }
+  .store-button {
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    text-decoration: none;
+    padding: 10px 16px;
+    border-radius: 10px;
+    font-size: 13px;
+  }
+  .hint {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 20px;
+  }
+  .error {
+    color: var(--accent);
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Sealed</h1>
+  <div id="content" class="card">Loading...</div>
+  <p class="hint">Have the app? Open it and enter the code above under &ldquo;Have a letter?&rdquo;</p>
+</main>
+
+<script src="/config.js" onerror="window.SEALED_CONFIG = window.SEALED_CONFIG || {}"></script>
+<script>
+(function () {
+  var config = window.SEALED_CONFIG || {};
+  var contentEl = document.getElementById('content');
+
+  function tokenFromLocation() {
+    var parts = window.location.pathname.split('/').filter(Boolean);
+    return parts[parts.length - 1] || '';
+  }
+
+  function renderError(message) {
+    contentEl.innerHTML = '<p class="error">' + message + '</p>';
+  }
+
+  function formatCountdown(msRemaining) {
+    if (msRemaining <= 0) return 'Opening now';
+    var totalSeconds = Math.floor(msRemaining / 1000);
+    var days = Math.floor(totalSeconds / 86400);
+    var hours = Math.floor((totalSeconds % 86400) / 3600);
+    var minutes = Math.floor((totalSeconds % 3600) / 60);
+    var seconds = totalSeconds % 60;
+    var parts = [];
+    if (days) parts.push(days + 'd');
+    parts.push(String(hours).padStart(2, '0') + 'h');
+    parts.push(String(minutes).padStart(2, '0') + 'm');
+    parts.push(String(seconds).padStart(2, '0') + 's');
+    return parts.join(' ');
+  }
+
+  function renderLetter(preview, token) {
+    var unlockAt = new Date(preview.unlock_at).getTime();
+
+    contentEl.innerHTML =
+      '<div class="wax">S</div>' +
+      '<p class="from">From ' + escapeHtml(preview.sender_display_name) + '</p>' +
+      '<p class="countdown" id="countdown"></p>' +
+      '<p class="code-label" style="margin-top:20px">Claim code</p>' +
+      '<div class="code" id="code" title="Tap to copy">' + escapeHtml(token) + '</div>' +
+      '<div class="stores">' +
+      '<a class="store-button" href="#" onclick="return false">App Store</a>' +
+      '<a class="store-button" href="#" onclick="return false">Google Play</a>' +
+      '</div>';
+
+    var countdownEl = document.getElementById('countdown');
+    function tick() {
+      countdownEl.textContent = formatCountdown(unlockAt - Date.now());
+    }
+    tick();
+    setInterval(tick, 1000);
+
+    var codeEl = document.getElementById('code');
+    codeEl.addEventListener('click', function () {
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(token).then(function () {
+          codeEl.classList.add('copied');
+          setTimeout(function () { codeEl.classList.remove('copied'); }, 2000);
+        });
+      }
+    });
+  }
+
+  function escapeHtml(s) {
+    var div = document.createElement('div');
+    div.textContent = String(s);
+    return div.innerHTML;
+  }
+
+  var token = tokenFromLocation();
+
+  if (!config.supabaseUrl || !config.supabaseAnonKey) {
+    renderError('This page is not configured yet.');
+    return;
+  }
+  if (!token) {
+    renderError('No letter here.');
+    return;
+  }
+
+  fetch(config.supabaseUrl + '/rest/v1/rpc/get_letter_preview', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: config.supabaseAnonKey,
+      Authorization: 'Bearer ' + config.supabaseAnonKey,
+    },
+    body: JSON.stringify({ p_token: token }),
+  })
+    .then(function (res) {
+      if (!res.ok) throw new Error('request_failed');
+      return res.json();
+    })
+    .then(function (rows) {
+      if (!rows || rows.length === 0) {
+        renderError('This letter has been burned, or the link is wrong.');
+        return;
+      }
+      renderLetter(rows[0], token);
+    })
+    .catch(function () {
+      renderError('Could not load this letter right now.');
+    });
+})();
+</script>
+</body>
+</html>

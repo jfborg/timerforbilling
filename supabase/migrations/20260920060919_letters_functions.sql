@@ -6,6 +6,46 @@
 -- live in one atomic, fully SQL-testable place instead of being split across several
 -- non-atomic round trips from Deno.
 
+-- Shared by seal_letter and reply_to_letter so the rules that matter most (server-time-only
+-- unlock_at bounds) can't drift between the two call sites. Not itself reachable by anyone:
+-- it has no grants of its own, and both callers already run as security definer.
+create or replace function public._validate_letter_content(
+  p_body_text text,
+  p_stationery_id text,
+  p_sender_display_name text,
+  p_unlock_at timestamptz,
+  p_sealed_at timestamptz
+)
+returns void
+language plpgsql
+as $$
+begin
+  if p_body_text is null or length(btrim(p_body_text)) = 0 then
+    raise exception 'body_text_required' using errcode = 'P0001';
+  end if;
+  if length(p_body_text) > 10000 then
+    raise exception 'body_text_too_long' using errcode = 'P0001';
+  end if;
+  if p_stationery_id is null or length(btrim(p_stationery_id)) = 0 then
+    raise exception 'stationery_id_required' using errcode = 'P0001';
+  end if;
+  if p_sender_display_name is null or length(btrim(p_sender_display_name)) = 0 then
+    raise exception 'sender_display_name_required' using errcode = 'P0001';
+  end if;
+  if length(p_sender_display_name) > 60 then
+    raise exception 'sender_display_name_too_long' using errcode = 'P0001';
+  end if;
+  -- Only server time counts (security rule 1): unlock_at is bounded against this
+  -- transaction's own now(), never against a client-supplied "current time".
+  if p_unlock_at < p_sealed_at + interval '1 minute' then
+    raise exception 'unlock_at_too_soon' using errcode = 'P0001';
+  end if;
+  if p_unlock_at > p_sealed_at + interval '12 months' then
+    raise exception 'unlock_at_too_far' using errcode = 'P0001';
+  end if;
+end;
+$$;
+
 create or replace function public.seal_letter(
   p_sender_id uuid,
   p_body_text text,
@@ -28,29 +68,9 @@ declare
   );
   v_sealed_at timestamptz := now();
 begin
-  if p_body_text is null or length(btrim(p_body_text)) = 0 then
-    raise exception 'body_text_required' using errcode = 'P0001';
-  end if;
-  if length(p_body_text) > 10000 then
-    raise exception 'body_text_too_long' using errcode = 'P0001';
-  end if;
-  if p_stationery_id is null or length(btrim(p_stationery_id)) = 0 then
-    raise exception 'stationery_id_required' using errcode = 'P0001';
-  end if;
-  if p_sender_display_name is null or length(btrim(p_sender_display_name)) = 0 then
-    raise exception 'sender_display_name_required' using errcode = 'P0001';
-  end if;
-  if length(p_sender_display_name) > 60 then
-    raise exception 'sender_display_name_too_long' using errcode = 'P0001';
-  end if;
-  -- Only server time counts (security rule 1): unlock_at is bounded against this
-  -- transaction's own now(), never against a client-supplied "current time".
-  if p_unlock_at < v_sealed_at + interval '1 minute' then
-    raise exception 'unlock_at_too_soon' using errcode = 'P0001';
-  end if;
-  if p_unlock_at > v_sealed_at + interval '12 months' then
-    raise exception 'unlock_at_too_far' using errcode = 'P0001';
-  end if;
+  perform public._validate_letter_content(
+    p_body_text, p_stationery_id, p_sender_display_name, p_unlock_at, v_sealed_at
+  );
 
   insert into public.letters
     (id, token, sender_id, status, stationery_id, sender_display_name, unlock_at, sealed_at)
@@ -115,6 +135,76 @@ $$;
 
 revoke all on function public.claim_letter(uuid, text) from public;
 grant execute on function public.claim_letter(uuid, text) to service_role;
+
+-- A reply is not a fresh sealed letter with its own shareable link: the recipient is already
+-- known (the original letter's sender), so this auto-addresses and auto-claims the new
+-- letter instead of leaving it for someone to claim by token. Only reachable once the caller
+-- has actually opened the original (brief section 6: "After reading: Write back is the
+-- primary button"), and only once per original letter (brief section 7; also enforced by
+-- the letters_one_reply_per_original unique index as a second, independent layer).
+create or replace function public.reply_to_letter(
+  p_caller_id uuid,
+  p_original_letter_id uuid,
+  p_body_text text,
+  p_stationery_id text,
+  p_sender_display_name text,
+  p_unlock_at timestamptz,
+  p_media jsonb default '[]'::jsonb
+)
+returns table (id uuid, token text, unlock_at timestamptz)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_original public.letters;
+  v_id uuid := gen_random_uuid();
+  v_token text := regexp_replace(
+    translate(encode(gen_random_bytes(16), 'base64'), '+/', '-_'),
+    '=+$', ''
+  );
+  v_sealed_at timestamptz := now();
+begin
+  select * into v_original from public.letters where public.letters.id = p_original_letter_id;
+
+  if not found or v_original.status = 'burned' then
+    raise exception 'letter_not_found' using errcode = 'P0002';
+  end if;
+
+  if p_caller_id is distinct from v_original.recipient_id then
+    raise exception 'forbidden' using errcode = 'P0001';
+  end if;
+
+  if v_original.opened_at is null then
+    raise exception 'original_not_opened' using errcode = 'P0001';
+  end if;
+
+  if exists (select 1 from public.letters where reply_to_letter_id = p_original_letter_id) then
+    raise exception 'already_replied' using errcode = 'P0001';
+  end if;
+
+  perform public._validate_letter_content(
+    p_body_text, p_stationery_id, p_sender_display_name, p_unlock_at, v_sealed_at
+  );
+
+  insert into public.letters (
+    id, token, sender_id, recipient_id, status, stationery_id, sender_display_name,
+    unlock_at, sealed_at, claimed_at, reply_to_letter_id
+  )
+  values (
+    v_id, v_token, p_caller_id, v_original.sender_id, 'claimed', p_stationery_id,
+    p_sender_display_name, p_unlock_at, v_sealed_at, v_sealed_at, p_original_letter_id
+  );
+
+  insert into public.letter_contents (letter_id, body_text, media)
+  values (v_id, p_body_text, coalesce(p_media, '[]'::jsonb));
+
+  return query select v_id, v_token, p_unlock_at;
+end;
+$$;
+
+revoke all on function public.reply_to_letter(uuid, uuid, text, text, text, timestamptz, jsonb) from public;
+grant execute on function public.reply_to_letter(uuid, uuid, text, text, text, timestamptz, jsonb) to service_role;
 
 create or replace function public.open_letter(
   p_caller_id uuid,

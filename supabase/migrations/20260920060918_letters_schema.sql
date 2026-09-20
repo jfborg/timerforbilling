@@ -25,9 +25,19 @@ create table public.letters (
   opened_at timestamptz,
   burned_at timestamptz,
   created_at timestamptz not null default now(),
+  -- Set only when this letter is a reply (reply_to_letter, next migration). A reply is
+  -- addressed automatically to the original sender rather than sealed with a shareable
+  -- token/claim step, since the recipient is already known.
+  reply_to_letter_id uuid references public.letters (id) on delete set null,
   constraint letters_token_length check (length(token) >= 20),
   constraint letters_recipient_not_sender check (recipient_id is null or recipient_id <> sender_id)
 );
+
+-- Monetisation (brief section 7): replying to a letter you received is always free, one
+-- reply per received letter. Enforced here, not just in reply_to_letter(), so the limit
+-- holds even if another insert path onto letters is ever added.
+create unique index letters_one_reply_per_original on public.letters (reply_to_letter_id)
+  where reply_to_letter_id is not null;
 
 comment on table public.letters is
   'Letter metadata only. Never add a body/media column here; those live in letter_contents, which has no client-facing RLS policies at all.';
